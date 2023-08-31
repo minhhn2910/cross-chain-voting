@@ -12,7 +12,7 @@ contract Voting {
     uint[2] public votes; // voting for two options
     bool public  session_active; // true if currently in a crosschain session
     uint public constant NUM_PEERS = 2;
-    // mapping(uint => uint) public session_nonce; // nonce of recevied message each session, not implemented
+    // mapping(uint => uint) public session_nonce; // nonce of received message each session, not implemented
     uint session_id = 1234;
     // simple tracking methods, only allow sending + receiving exact 1 message per session
     mapping(uint => bool) public message_received; // true if message is received from sender i
@@ -24,11 +24,11 @@ contract Voting {
         address addr;
         // other properties
     }
-    mapping(uint => CrosschainPeer) public crosschain_peers;
+    CrosschainPeer[] public crosschain_peers;
     uint public my_rank = 2**256 - 1;
     event VotingResult(uint winner);
 
-    function recv_vote(uint candidate, uint voting_round) internal {
+    function recv_vote(uint candidate, uint voting_round) public {
         votes[candidate] = votes[candidate] + 1;
     }
 
@@ -40,22 +40,32 @@ contract Voting {
         if (session_active)
             enter_session(); // main logic of session
     }
-    function send_message(uint receiver_rank, bytes memory data) internal{
+    function send_message(uint receiver_rank, bytes memory data) public{
         address receiver_address = crosschain_peers[receiver_rank].addr;
+        // TODO: retry logic
         Voting(receiver_address).recv_message(session_id, data);
         message_sent[receiver_rank] = true;
     }
-    function crosschain_init(address[2] memory peers) public{
+    function crosschain_init(address[] memory peers) public{
         require(session_active == false, "session already started, finalize first");
         // data must be the same across all chains
         // use mapping to enable quierying rank by contract's own address
         // TODO: extra logic to get new unique session id each time the same across all chains
-        crosschain_peers[0] = CrosschainPeer(1, 0, peers[0]);
-        crosschain_peers[1] = CrosschainPeer(2, 1, peers[1]);
-
+        delete crosschain_peers;
+        for(uint i = 0; i < peers.length; i++){
+            crosschain_peers.push(CrosschainPeer({
+                chainid: i+1,
+                rank: i,
+                addr: peers[i]
+            }));
+            if (peers[i] == address(this)){
+                my_rank = i;
+            }
+        }
         session_active = true;
         clear_message_status();
     }
+
     function clear_message_status() internal {
         for (uint i = 0; i < NUM_PEERS; i++){
             message_received[i] = false;
@@ -71,15 +81,16 @@ contract Voting {
                 send_message(0, abi.encodePacked(my_rank, uint(0), candidate));
                 message_sent[0] = true;
             }
+            crosschain_finalize();
         } else {
-            // wait for all votes
-            for (uint i = 0; i < NUM_PEERS; i++){
+            // wait for all votes, except rank 0
+            for (uint i = 1; i < NUM_PEERS; i++){
                 if (message_received[i] == false){
                     return;
                 }
             }
             // all votes received, find winner
-            if (votes[0] > votes[1]){
+            if (votes[0] >= votes[1]){
                 winner = 0;
             } else {
                 winner = 1;
@@ -93,8 +104,9 @@ contract Voting {
     function crosschain_finalize() public{
         // reset session states
         session_active = false;
+        delete crosschain_peers;
     }
-    function voting_session(address[2] memory peers) public{
+    function voting_session(address[] memory peers) public{
         crosschain_init(peers);
         voting_round = voting_round + 1;
         enter_session();
