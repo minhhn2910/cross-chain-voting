@@ -1,0 +1,21 @@
+{
+  "name": "cross-chain-voting",
+  "version": "1.0.0",
+  "description": "Testing crosschain distributed voting ",
+  "main": "test.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/minhhn2910/CrossChainVoting"
+  },
+  "author": "minhhn2910@github",
+  "license": "MIT",
+  "dependencies": {
+    "ganache": "^7.9.1",
+    "solc": "^0.8.21",
+    "web3": "^4.1.1",
+    "web3-providers-http": "^4.0.5"
+  }
+}
