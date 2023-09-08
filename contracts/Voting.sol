@@ -7,11 +7,10 @@ There is no security check in this contract, so it MUST NOT be used in productio
 pragma solidity ^0.8.0;
 
 contract Voting {
-    uint public winner;
+    uint public winner = 2**256 - 1;
     uint public voting_round;
     uint[2] public votes; // voting for two options
     bool public  session_active; // true if currently in a crosschain session
-    uint public constant NUM_PEERS = 2;
     // mapping(uint => uint) public session_nonce; // nonce of received message each session, not implemented
     uint session_id = 1234;
     // simple tracking methods, only allow sending + receiving exact 1 message per session
@@ -24,9 +23,13 @@ contract Voting {
         address addr;
         // other properties
     }
+
     CrosschainPeer[] public crosschain_peers;
     uint public my_rank = 2**256 - 1;
+
     event VotingResult(uint winner);
+    event SendMessage(uint session_id, uint receiver_rank, bytes data);
+    event RecvMessage(uint session_id, uint receiver_rank, bytes data);
 
     function recv_vote(uint candidate, uint voting_round) public {
         votes[candidate] = votes[candidate] + 1;
@@ -35,14 +38,19 @@ contract Voting {
     function recv_message(uint session, bytes calldata data) external  {
         // require(session_active == true, "session not started");
         // TODO: Sender validation, session management
-        (uint sender_rank, uint round_number, uint candiate) = abi.decode(data, (uint, uint, uint));
+        emit RecvMessage(session_id, my_rank, data);
+        (uint sender_rank, uint round_number, uint candidate) = abi.decode(data, (uint, uint, uint));
+        if (message_received[sender_rank])
+            return ; // no double voting
         message_received[sender_rank] = true;
+        votes[candidate] += 1;
         if (session_active)
             enter_session(); // main logic of session
     }
     function send_message(uint receiver_rank, bytes memory data) public{
         address receiver_address = crosschain_peers[receiver_rank].addr;
         // TODO: retry logic
+        emit SendMessage(session_id, receiver_rank, data);
         Voting(receiver_address).recv_message(session_id, data);
         message_sent[receiver_rank] = true;
     }
@@ -67,7 +75,7 @@ contract Voting {
     }
 
     function clear_message_status() internal {
-        for (uint i = 0; i < NUM_PEERS; i++){
+        for (uint i = 0; i < crosschain_peers.length; i++){
             message_received[i] = false;
             message_sent[i] = false;
         }
@@ -78,13 +86,15 @@ contract Voting {
             // send votes to rank 0
             if (message_sent[0] == false){
                 uint candidate = 1;
+                if (my_rank > 2)
+                    candidate = 0;
                 send_message(0, abi.encodePacked(my_rank, uint(0), candidate));
                 message_sent[0] = true;
             }
             crosschain_finalize();
         } else {
             // wait for all votes, except rank 0
-            for (uint i = 1; i < NUM_PEERS; i++){
+            for (uint i = 1; i < crosschain_peers.length; i++){
                 if (message_received[i] == false){
                     return;
                 }
@@ -105,6 +115,12 @@ contract Voting {
         // reset session states
         session_active = false;
         delete crosschain_peers;
+        // clear the votes
+        // clear_votes()
+    }
+    function clear_votes() public {
+        // votes[0] = 0;
+        // votes[1] = 0;
     }
     function voting_session(address[] memory peers) public{
         crosschain_init(peers);
