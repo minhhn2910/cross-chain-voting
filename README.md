@@ -1,5 +1,5 @@
 # Cross-Chain Voting
-Test POC cross-chain voting app between N blockchains. Each blockchain cast 1 vote between two candidates
+Test POC cross-chain voting app runs on N blockchains. Each blockchain can cast 1 vote between two candidates
 
 ## Features:
 With N blockchains, the first blockchain aggregates the votes, while the other N-1 contracts on N-1 blockchains send votes. Each contract can cast only 1 vote. The result is stored in the first blockchain. Further logic can be implemented to allow multiple votes per blockchain or to broadcast the voting results, etc.
