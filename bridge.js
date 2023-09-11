@@ -1,6 +1,7 @@
 const { Web3 } = require("web3");
 const fs = require("fs");
 const express = require('express');
+const e = require("express");
 require('dotenv').config({ path: "dev.env" })
 console.log(process.env.RPC_NODES);
 var rpc_nodes = process.env.RPC_NODES.split(",");
@@ -10,44 +11,48 @@ for (var i = 0; i < rpc_nodes.length; i++) {
     web3_instances.push(new Web3(rpc_nodes[i]));
 }
 
-
+const event_abi = {
+    SendMessage: {
+        name: 'SendMessage',
+        type: 'event',
+        inputs: [
+            { indexed: false, name: 'session_id', type: 'uint256' },
+            { indexed: false, name: 'receiver_address', type: 'address' },
+            { indexed: false, name: 'receiver_rank', type: 'uint256' },
+            { indexed: false, name: 'data', type: 'bytes' }
+        ]
+    },
+    RecvMessage: {
+        name: 'RecvMessage',
+        type: 'event',
+        inputs: [
+            { indexed: false, name: 'session_id', type: 'uint256' },
+            { indexed: false, name: 'receiver_rank', type: 'uint256' },
+            { indexed: false, name: 'data', type: 'bytes' }
+        ]
+    },
+    VoteCast: {
+        name: 'VoteCast',
+        type: 'event',
+        inputs: [
+            { indexed: false, name: 'candidate', type: 'uint256' },
+            { indexed: false, name: 'sender_rank', type: 'uint256' }
+        ]
+    },
+    VotingResult: {
+        name: 'VotingResult',
+        type: 'event',
+        inputs: [
+            { indexed: false, name: 'winner', type: 'uint256' }
+        ]
+    }
+}
 
 // ABI for the SendMessage event
-const sendMessageEventSignature = web3_instances[0].eth.abi.encodeEventSignature({
-    name: 'SendMessage',
-    type: 'event',
-    inputs: [
-        { indexed: false, name: 'session_id', type: 'uint256' },
-        { indexed: false, name: 'receiver_address', type: 'address' },
-        { indexed: false, name: 'receiver_rank', type: 'uint256' },
-        { indexed: false, name: 'data', type: 'bytes' }
-    ]
-});
-const receiveMessageEventSignature = web3_instances[0].eth.abi.encodeEventSignature({
-    name: 'SendMessage',
-    type: 'event',
-    inputs: [
-        { indexed: false, name: 'session_id', type: 'uint256' },
-        { indexed: false, name: 'receiver_address', type: 'address' },
-        { indexed: false, name: 'receiver_rank', type: 'uint256' },
-        { indexed: false, name: 'data', type: 'bytes' }
-    ]
-});
-const voteCastEventSignature = web3_instances[0].eth.abi.encodeEventSignature({
-    name: 'VoteCast',
-    type: 'event',
-    inputs: [
-        { indexed: false, name: 'candidate', type: 'uint256' },
-        { indexed: false, name: 'sender_rank', type: 'uint256' }
-    ]
-});
-const VotingResultEventSignature = web3_instances[0].eth.abi.encodeEventSignature({
-    name: 'VotingResult',
-    type: 'event',
-    inputs: [
-        { indexed: false, name: 'winner', type: 'uint256' }
-    ]
-});
+const sendMessageEventSignature = web3_instances[0].eth.abi.encodeEventSignature(event_abi.SendMessage);
+const receiveMessageEventSignature = web3_instances[0].eth.abi.encodeEventSignature(event_abi.RecvMessage);
+const voteCastEventSignature = web3_instances[0].eth.abi.encodeEventSignature(event_abi.VoteCast);
+const VotingResultEventSignature = web3_instances[0].eth.abi.encodeEventSignature(event_abi.VotingResult);
 
 file_name = "contracts/voting.json";
 const json_output = JSON.parse(fs.readFileSync(file_name, "utf8"));
@@ -63,12 +68,7 @@ async function processBlock(blockNumber, web3_instance, chain_id) {
             const receipt = await web3_instance.eth.getTransactionReceipt(tx.hash);
             for (const log of receipt.logs) {
                 if (log.topics[0] === sendMessageEventSignature) {
-                    const event = web3_instance.eth.abi.decodeLog([
-                        { indexed: false, name: 'session_id', type: 'uint256' },
-                        { indexed: false, name: 'receiver_address', type: 'address' },
-                        { indexed: false, name: 'receiver_rank', type: 'uint256' },
-                        { indexed: false, name: 'data', type: 'bytes' }
-                    ], log.data, log.topics.slice(1));
+                    const event = web3_instance.eth.abi.decodeLog(event_abi.SendMessage.inputs, log.data, log.topics.slice(1));
                     console.log(
                         "Blockchain", chain_id,
                         "SendMsg event",
@@ -95,26 +95,17 @@ async function processBlock(blockNumber, web3_instance, chain_id) {
                     }
                 }
                 if (log.topics[0] === receiveMessageEventSignature){
-                    const event = web3_instance.eth.abi.decodeLog([
-                        { indexed: false, name: 'session_id', type: 'uint256' },
-                        { indexed: false, name: 'receiver_address', type: 'address' },
-                        { indexed: false, name: 'receiver_rank', type: 'uint256' },
-                        { indexed: false, name: 'data', type: 'bytes' }
-                    ], log.data, log.topics.slice(1));
+                    const event = web3_instance.eth.abi.decodeLog(event_abi.RecvMessage.inputs, log.data, log.topics.slice(1));
                     console.log(
                         "Blockchain", chain_id,
                         "RecvMsg event",
                         "session_id:", event.session_id,
-                        "receiver_address:", event.receiver_address,
                         "receiver_rank:", event.receiver_rank,
                         "data:", event.data
                     );
                 }
                 if (log.topics[0] === voteCastEventSignature){
-                    const event = web3_instance.eth.abi.decodeLog([
-                        { indexed: false, name: 'candidate', type: 'uint256' },
-                        { indexed: false, name: 'sender_rank', type: 'uint256' }
-                    ], log.data, log.topics.slice(1));
+                    const event = web3_instance.eth.abi.decodeLog(event_abi.VoteCast.inputs, log.data, log.topics.slice(1));
                     console.log(
                         "Blockchain", chain_id,
                         "VoteCast event",
@@ -123,9 +114,7 @@ async function processBlock(blockNumber, web3_instance, chain_id) {
                     );
                 }
                 if (log.topics[0] === VotingResultEventSignature){
-                    const event = web3_instance.eth.abi.decodeLog([
-                        { indexed: false, name: 'winner', type: 'uint256' }
-                    ], log.data, log.topics.slice(1));
+                    const event = web3_instance.eth.abi.decodeLog(event_abi.VotingResult.inputs, log.data, log.topics.slice(1));
                     console.log(
                         "Blockchain", chain_id,
                         "VotingResult event",
