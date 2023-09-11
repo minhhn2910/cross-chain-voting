@@ -1,0 +1,32 @@
+name: Test Workflow
+
+on: [push, pull_request]
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y nodejs npm
+        npm install -g ganache-cli
+
+    - name: Start 3 blockchains and run tests
+      run: |
+        ganache-cli --account="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef,100000000000000000000000000" -p 8545 > /dev/null 2>&1 &
+        PID1=$!
+        ganache-cli --account="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef,100000000000000000000000000" -p 8646 > /dev/null 2>&1 &
+        PID2=$!
+        ganache-cli --account="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef,100000000000000000000000000" -p 8747 > /dev/null 2>&1 &
+        PID3=$!
+        sleep 1
+        node bridge.js &
+        BRIDGE_PID=$!
+        sleep 1
+        node test.js
+        kill $PID1 $PID2 $PID3 $BRIDGE_PID

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /*
 This is a simple voting contract that can be used to vote for two options.
-It is used to demonstrate the crosschain communication standard between blockchains.
+It is used to demonstrate a testing proof of concept for the crosschain communication library between blockchains.
 There is no security check in this contract, so it MUST NOT be used in production.
 */
 pragma solidity ^0.8.0;
@@ -10,6 +10,7 @@ contract Voting {
     uint public winner = 2**256 - 1;
     uint public voting_round;
     uint[2] public votes; // voting for two options
+    uint[2] public last_round_votes; // voting result of last round, for debugging purpose
     bool public  session_active; // true if currently in a crosschain session
     // mapping(uint => uint) public session_nonce; // nonce of received message each session, not implemented
     uint session_id = 1234;
@@ -34,6 +35,7 @@ contract Voting {
     uint public my_rank = 2**256 - 1;
 
     event VotingResult(uint winner);
+    event VoteCast(uint candidate, uint sender_rank);
     event SendMessage(uint session_id, address receiver_address, uint receiver_rank, bytes data);
     event RecvMessage(uint session_id, uint receiver_rank, bytes data);
 
@@ -49,6 +51,7 @@ contract Voting {
         if (message_received[sender_rank])
             return ; // no double voting
         message_received[sender_rank] = true;
+        emit VoteCast(candidate, sender_rank);
         votes[candidate] += 1;
         if (session_active)
             enter_session(); // main logic of session
@@ -71,21 +74,19 @@ contract Voting {
         // Voting(receiver_address).recv_message(session_id, data); adding to debug for single chain
         message_sent[receiver_rank] = true;
     }
-    function crosschain_init(address[] memory peers) public{
+    function crosschain_init(address[] memory peers, uint _my_rank) public{
         require(session_active == false, "session already started, finalize first");
         // data must be the same across all chains
         // use mapping to enable quierying rank by contract's own address
         // TODO: extra logic to get new unique session id each time the same across all chains
         delete crosschain_peers;
+        my_rank = _my_rank; // init my rank
         for(uint i = 0; i < peers.length; i++){
             crosschain_peers.push(CrosschainPeer({
                 chainid: i+1,
                 rank: i,
                 addr: peers[i]
             }));
-            if (peers[i] == address(this)){
-                my_rank = i;
-            }
         }
         session_active = true;
         clear_message_status();
@@ -134,14 +135,16 @@ contract Voting {
         session_active = false;
         delete crosschain_peers;
         // clear the votes
-        // clear_votes()
+        clear_votes();
     }
     function clear_votes() public {
-        // votes[0] = 0;
-        // votes[1] = 0;
+        last_round_votes[0] = votes[0];
+        last_round_votes[1] = votes[1];
+        votes[0] = 0;
+        votes[1] = 0;
     }
-    function voting_session(address[] memory peers) public{
-        crosschain_init(peers);
+    function voting_session(address[] memory peers, uint _my_rank) public{
+        crosschain_init(peers, _my_rank);
         voting_round = voting_round + 1;
         enter_session();
     }

@@ -3,163 +3,98 @@ const fs = require("fs");
 require('dotenv').config({ path: "dev.env" })
 // Connect to the Ganache
 
-var web3_chain1 = new Web3(process.env.RPC_NODE_1);
-var web3_chain2 = new Web3(process.env.RPC_NODE_2);
+console.log(process.env.RPC_NODES);
+var rpc_nodes = process.env.RPC_NODES.split(",");
+var web3_instances = [];
+for (var i = 0; i < rpc_nodes.length; i++) {
+    rpc_nodes[i] = rpc_nodes[i].trim();
+    web3_instances.push(new Web3(rpc_nodes[i]));
+}
 
-// console.log(web3);
-
-const sender = "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb"; // Your Ganache address
-const privateKey = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"; // Your Ganache private key
-
-const deploy_single_chain = async function (file_name, contract_name, web3_instance) {
-  const json_output = JSON.parse(fs.readFileSync(file_name, "utf8"));
-  // console.log("json_output " , json_output);
-  contract_key = 'contracts/Voting.sol:Voting';
-  const contract_abi = json_output.contracts[contract_key].abi;
-  var bytecode = json_output.contracts[contract_key].bin;
-  // console.log("bytecode " , bytecode);
-  // console.log("abi " , contract_abi);
-
-  const votingInterface = new web3_instance.eth.Contract(contract_abi);
-
-  var tx_receipt = await votingInterface.deploy({data: bytecode}).send({
-                                                from: sender,
-                                                gas: 5000000,
-                                                gasPrice: '30000000000000'
-                                              });
-
-  console.log("Contract deployed at address", tx_receipt._address);
-
-  const contract_1 = new web3_instance.eth.Contract(
-    contract_abi,
-    tx_receipt._address
-  );
-
-  tx_receipt = await votingInterface.deploy({data: bytecode}).send({
-    from: address,
-    gas: 5000000,
-    gasPrice: '30000000000000'
-  });
-
-  console.log("Contract deployed at address", tx_receipt._address);
-  const contract_2 = new web3_instance.eth.Contract(
-    contract_abi,
-    tx_receipt._address
-  );
-
-
-  console.log("init contract_1");
-  console.log([contract_1._address, contract_2._address])
-  await contract_1.methods.crosschain_init([contract_1._address, contract_2._address]).send({from: sender, gas: 5000000});
-  console.log("init contract_2");
-  await contract_2.methods.crosschain_init([contract_1._address, contract_2._address]).send({from: sender, gas: 5000000});
-  console.log("session active contract_1", await contract_1.methods.session_active().call());
-  console.log("session active contract_2", await contract_2.methods.session_active().call());
-  console.log("enter sessions");
-
-  await contract_2.methods.enter_session().send({from: sender, gas: 5000000});
-  console.log("session active contract_1", await contract_1.methods.session_active().call());
-  console.log("session active contract_2", await contract_2.methods.session_active().call());
-
-  console.log("voting result");
-  const result_1 = await contract_1.methods.votes(0).call();
-  console.log("result_1", result_1);
-  const result_2 = await contract_1.methods.votes(1).call();
-  console.log("result_2", result_2);
-  /*
-  const setReceipt = await contract.methods.set(1234).send({from: address});
-  console.log("Transaction hash:", setReceipt.transactionHash);
-
-  const result = await contract.methods.get().call();
-  console.log("Stored data:", result);
-  */
-};
-
-// deploy_single_chain(
-//   (file_name = "contracts/voting.json"),
-//   (contract_name = "SimpleStorage"),
-//   (web3_instance = web3_chain1)
-// );
+let sender = process.env.SENDER_ADDRESS;
 
 async function pollNewBlocks() {
   setTimeout(pollNewBlocks, 2000); // Check every 15 seconds
 }
 
-async function poll_voting_result(contract_1, contract_2) {
-  session_1_active = await contract_1.methods.session_active().call();
-  session_2_active = await contract_2.methods.session_active().call();
-  console.log("session active contract_1", session_1_active);
-  console.log("session active contract_2", session_2_active);
+async function poll_voting_result(contract_instances) {
+  let all_session_active = false;
+  for (var i = 0; i < contract_instances.length; i++) {
+    session_active = await contract_instances[i].methods.session_active().call();
+    all_session_active = all_session_active || session_active;
+    console.log("session active contract ", i, session_active);
+  }
 
-  console.log("voting result");
-  const result_1 = await contract_1.methods.votes(0).call();
-  console.log("result_1", result_1);
-  const result_2 = await contract_1.methods.votes(1).call();
-  console.log("result_2", result_2);
-  if (session_1_active == true  || session_2_active == true) {
-    contract_2.methods.retry_last_message().send({from: sender, gas: 5000000});
-    setTimeout(poll_voting_result, 4000, contract_1, contract_2); // Check and retry every 4 seconds
+  if (all_session_active == false) {
+    console.log("========= voting result =========");
+    const result_1 = await contract_instances[0].methods.last_round_votes(0).call();
+    console.log("candiate 1's votes", result_1);
+    const result_2 = await contract_instances[0].methods.last_round_votes(1).call();
+    console.log("candiate 2's votes", result_2);
+    return;
+  } else {
+    console.log("========= retry last message =========");
+    for (var i = 1; i < contract_instances.length; i++) {
+      console.log("Blockchain ", i, " retry sending message to contract ", contract_instances[i]._address)
+      await contract_instances[i].methods.retry_last_message().send({from: sender, gas: 5000000});
+    }
+
+    setTimeout(poll_voting_result, 4000, contract_instances); // Check and retry every 4 seconds
   }
 
 }
 
-const deploy_multiple_chain = async function (file_name, contract_name, web3_instance) {
-  const json_output = JSON.parse(fs.readFileSync(file_name, "utf8"));
+const deploy_multiple_chain = async function (json_contract, web3_instances) {
+  const json_output = JSON.parse(fs.readFileSync(json_contract, "utf8"));
   // console.log("json_output " , json_output);
   contract_key = 'contracts/Voting.sol:Voting';
   const contract_abi = json_output.contracts[contract_key].abi;
   var bytecode = json_output.contracts[contract_key].bin;
-  // console.log("bytecode " , bytecode);
-  // console.log("abi " , contract_abi);
-
-  const votingInterface = new web3_instance.eth.Contract(contract_abi);
-
-  var tx_receipt = await votingInterface.deploy({data: bytecode}).send({
-                                                from: sender,
-                                                gas: 5000000,
-                                                gasPrice: '30000000000000'
-                                              });
-
-  console.log("Contract deployed at address", tx_receipt._address);
-
-  const contract_1 = new web3_instance.eth.Contract(
-    contract_abi,
-    tx_receipt._address
-  );
-
-  tx_receipt = await votingInterface.deploy({data: bytecode}).send({
-    from: sender,
-    gas: 5000000,
-    gasPrice: '30000000000000'
-  });
-
-  console.log("Contract deployed at address", tx_receipt._address);
-  const contract_2 = new web3_instance.eth.Contract(
-    contract_abi,
-    tx_receipt._address
-  );
 
 
-  console.log("init contract_1");
-  console.log([contract_1._address, contract_2._address])
-  await contract_1.methods.crosschain_init([contract_1._address, contract_2._address]).send({from: sender, gas: 5000000});
-  console.log("init contract_2");
-  await contract_2.methods.crosschain_init([contract_1._address, contract_2._address]).send({from: sender, gas: 5000000});
-  console.log("session active contract_1", await contract_1.methods.session_active().call());
-  console.log("session active contract_2", await contract_2.methods.session_active().call());
-  console.log("enter sessions");
+  var contract_instances = [];
+  for (var i = 0; i < web3_instances.length; i++) {
 
-  await contract_2.methods.enter_session().send({from: sender, gas: 5000000});
+    web3_instance = web3_instances[i];
+    const votingInterface = new web3_instance.eth.Contract(contract_abi);
+    const tx_receipt = await votingInterface.deploy({data: bytecode}).send({
+                                                    from: sender,
+                                                    gas: 5000000,
+                                                    gasPrice: '30000000000000'
+                                                  });
+    const contract_instance = new web3_instance.eth.Contract(
+                                                    contract_abi,
+                                                    tx_receipt._address
+                                                  );
+    contract_instances.push(contract_instance);
+    console.log("Blockchain ", i, " Contract deployed at address", tx_receipt._address);
+  }
 
-  poll_voting_result(contract_1, contract_2);
 
+
+  const contract_addresses = contract_instances.map(obj => obj._address);
+  for (var i = 0; i < web3_instances.length; i++) {
+    await contract_instances[i].methods.crosschain_init(contract_addresses, i).send({from: sender, gas: 5000000});
+    console.log("init contract on chain ", i);
+  }
+
+  for (var i = 0; i < web3_instances.length; i++) {
+    console.log("session active contract", i, await contract_instances[i].methods.session_active().call());
+    console.log("Blockchain ", i, " contract rank ", await contract_instances[i].methods.my_rank().call());
+  }
+
+  console.log("=================== Enter sessions ===================");
+  for (var i = 0; i < web3_instances.length; i++) {
+    await contract_instances[i].methods.enter_session().send({from: sender, gas: 5000000});
+  }
+
+  poll_voting_result(contract_instances);
 
 };
 
 deploy_multiple_chain(
-  (file_name = "contracts/voting.json"),
-  (contract_name = "SimpleStorage"),
-  (web3_instance = web3_chain1)
+  "contracts/voting.json",
+  web3_instances
 );
 
 
