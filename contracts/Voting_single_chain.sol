@@ -23,12 +23,6 @@ contract Voting {
         address addr;
         // other properties
     }
-    struct Message {
-        uint256 sessionId;
-        address receiverAddress;
-        uint256 receiverRank;
-        bytes data;
-    }
 
     CrosschainPeer[] public crosschain_peers;
     uint public my_rank = 2**256 - 1;
@@ -53,22 +47,11 @@ contract Voting {
         if (session_active)
             enter_session(); // main logic of session
     }
-
-    Message public last_message; // simple retry logic
-    function retry_last_message() public {
-        emit SendMessage(last_message.sessionId, last_message.receiverAddress, last_message.receiverRank, last_message.data);
-    }
     function send_message(uint receiver_rank, bytes memory data) public{
         address receiver_address = crosschain_peers[receiver_rank].addr;
         // TODO: retry logic
         emit SendMessage(session_id, receiver_address, receiver_rank, data);
-        last_message = Message({
-            sessionId: session_id,
-            receiverAddress: receiver_address,
-            receiverRank: receiver_rank,
-            data: data
-        });
-        // Voting(receiver_address).recv_message(session_id, data); adding to debug for single chain
+        Voting(receiver_address).recv_message(session_id, data);
         message_sent[receiver_rank] = true;
     }
     function crosschain_init(address[] memory peers) public{
@@ -97,7 +80,6 @@ contract Voting {
             message_sent[i] = false;
         }
     }
-
     function enter_session() public{
         require(session_active == true, "session not started");
         if (my_rank != 0){

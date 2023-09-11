@@ -13,6 +13,8 @@
   "author": "minhhn2910@github",
   "license": "MIT",
   "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "ganache": "^7.9.1",
     "solc": "^0.8.21",
     "web3": "^4.1.1",
