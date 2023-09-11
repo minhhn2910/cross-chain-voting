@@ -5,15 +5,16 @@ on: [push, pull_request]
 jobs:
   run-tests:
     runs-on: ubuntu-latest
-
-    steps:
+  strategy:
+      matrix:
+        node-version: [18.x]
+  steps:
     - name: Checkout code
       uses: actions/checkout@v2
 
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y nodejs npm
+        npm install
         npm install -g ganache-cli
 
     - name: Start 3 blockchains and run tests
