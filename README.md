@@ -64,3 +64,5 @@ candiate 2's votes 2n
 
 ```
 
+Sample run can also be viewed from [Github Action](https://github.com/minhhn2910/cross-chain-voting/actions/runs/6156599002)
+
