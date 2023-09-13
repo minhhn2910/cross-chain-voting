@@ -10,12 +10,12 @@ This setup simulates the behavior of an asynchronous messaging interface library
 
 ### Code files 
 
-* `contracts/Voting.sol` : the voting app with a unified logic that applied to all of the participating blockchains
+* `contracts/Voting.sol` : the voting app with a unified logic that can be applied to all of the participating blockchains
 * `bridge.js`: the simple notary bridge service listening to all chains 
-* `test.js` : the test scenario (deploy, init cross-chain session, and start cross-chain logic
+* `test.js` : the test scenario (deploy, init cross-chain session, and start cross-chain logic)
 
 ### Run Test:
-1. Clone this project and make sure `node` is installed:
+1. Clone this project and make sure `node v16` is installed:
 ```
 git clone https://github.com/minhhn2910/cross-chain-voting.git
 ```
